@@ -19,7 +19,9 @@ namespace Editor
         public UInt32 Flag;
         List<byte> CompressBlockInfoBuffer = new List<byte>();
         public AssetBundleDirectoryInfo[] allAssetBundleDirectoryInfo;
+
         public BlockInfo[] allBlockInfo;
+
         // 解释整体结构
         public void ReadStructure(byte[] bytes)
         {
@@ -37,28 +39,34 @@ namespace Editor
             {
                 BytesPosition++;
             }
+
             // CompressBlockInfoBuffer
             CompressBlockInfoBuffer.Clear();
             for (int index = 0; index < CompressedBlocksInfoSize; index++, BytesPosition++)
             {
                 CompressBlockInfoBuffer.Add(bytes[BytesPosition]);
             }
+
             // 解释CompressBlockInfoBuffer
             AssetBundleInternalClassUtility.DecodeCompressBlocksInfo(CompressBlockInfoBuffer.ToArray(), this,
                 out allAssetBundleDirectoryInfo, out allBlockInfo);
-            
+
             // List<Class CompressBlockContent>
-            List<byte> allBlockBuffer = new List<byte>(); 
+            List<byte> allBlockBuffer = new List<byte>();
             foreach (var blockInfo in allBlockInfo)
             {
-                var compressBuffer1 = AssetBundleUtility.ReadBytes(bytes, (int)blockInfo.CompressedSize, ref BytesPosition);
-                var unCompressBuffer1 = AssetBundleUtility.DecodeCompress(blockInfo.Flags, compressBuffer1, (int)blockInfo.UncompressedSize);
+                var compressBuffer1 =
+                    AssetBundleUtility.ReadBytes(bytes, (int)blockInfo.CompressedSize, ref BytesPosition);
+                var unCompressBuffer1 = AssetBundleUtility.DecodeCompress(blockInfo.Flags, compressBuffer1,
+                    (int)blockInfo.UncompressedSize);
                 allBlockBuffer.AddRange(unCompressBuffer1);
             }
+
             // 解释List<Class CompressBlockContent>
             AssetBundleInternalClassUtility.DecodeDirectoryBuffer(allBlockBuffer, ref allAssetBundleDirectoryInfo);
 
             #region 内容
+
             // for test 
             // foreach (var directoryInfo in allAssetBundleDirectoryInfo)
             // {
@@ -82,9 +90,10 @@ namespace Editor
             //     sb.Clear();
             //     Debug.Log("=========================");
             // }
+
             #endregion
+
             // ReadAssetsBuffer();
-            
         }
 
         public void ReadAssetsBuffer()
@@ -92,7 +101,9 @@ namespace Editor
             foreach (var directoryInfo in allAssetBundleDirectoryInfo)
             {
                 // 想办法从文件头里判定一下类型
+
                 #region Asset类型解释 begin
+
                 int _position = 0;
                 {
                     var m_MetadataSize = AssetBundleUtility.ReadUInt32(directoryInfo.buffer, ref _position);
@@ -111,6 +122,7 @@ namespace Editor
                 }
                 var unityVersion = AssetBundleUtility.ReadStringToNull(directoryInfo.buffer, ref _position);
                 _position = 0;
+
                 #endregion
 
                 try
@@ -138,11 +150,12 @@ namespace Editor
         public uint Flags;
         public string Path;
         public byte[] buffer;
-        
+
         public uint MetadataSize;
         public long FileSize;
         public uint Version;
         public long DataOffset;
+
         /// <summary>
         /// 大小端
         /// </summary>
@@ -170,41 +183,74 @@ namespace Editor
                 DataOffset = AssetBundleUtility.ReadInt64(buffer, ref _position);
                 var aaa = AssetBundleUtility.ReadInt64(buffer, ref _position); // 未知
             }
+
             // 各个版本的特有的一些属性
             unityVersion = AssetBundleUtility.ReadStringToNull(buffer, ref _position);
             var m_TargetPlatform = AssetBundleUtility.ReadInt32(buffer, ref _position);
             EnableTypeTree = AssetBundleUtility.ReadBoolean(buffer, ref _position);
-            
+
             int typeCount = AssetBundleUtility.ReadInt32(buffer, ref _position);
             TypeList = new List<TypeRoot>();
             for (int i = 0; i < typeCount; i++)
             {
-                TypeList.Add(new TypeRoot(buffer,EnableTypeTree, ref _position));
+                TypeList.Add(new TypeRoot(buffer, EnableTypeTree, false, ref _position));
             }
+
             // read object
             int objectCount = AssetBundleUtility.ReadInt32(buffer, ref _position);
             for (int i = 0; i < objectCount; i++)
             {
                 var m_PathID = AssetBundleUtility.ReadInt64(buffer, ref _position);
+                var byteStart = AssetBundleUtility.ReadInt64(buffer, ref _position);
+                byteStart += DataOffset;
+                var byteSize = AssetBundleUtility.ReadUInt32(buffer, ref _position);
+                var typeID = AssetBundleUtility.ReadInt32(buffer, ref _position);
+                // 板顶树级关系
             }
+
+            int scriptCount = AssetBundleUtility.ReadInt32(buffer, ref _position);
+            for (int i = 0; i < scriptCount; i++)
+            {
+                var localSerializedFileIndex = AssetBundleUtility.ReadInt32(buffer, ref _position);
+                // 4位对齐
+                var localIdentifierInFile = AssetBundleUtility.ReadInt64(buffer, ref _position);
+            }
+
+            int externalsCount = AssetBundleUtility.ReadInt32(buffer, ref _position);
+            for (int i = 0; i < externalsCount; i++)
+            {
+                byte[] guid = AssetBundleUtility.ReadBytes(buffer, 16, ref _position);
+                var type = AssetBundleUtility.ReadInt32(buffer, ref _position);
+                var pathName = AssetBundleUtility.ReadStringToNull(buffer, ref _position);
+            }
+
+            int refTypesCount = AssetBundleUtility.ReadInt32(buffer, ref _position);
+            for (int i = 0; i < refTypesCount; i++)
+            {
+                new TypeRoot(buffer, EnableTypeTree, true, ref _position);
+            }
+
+            var userInformation = AssetBundleUtility.ReadStringToNull(buffer, ref _position);
         }
     }
+
     /// <summary>
     /// 资源文件
     /// </summary>
     public class AssetFile
     {
-
         public uint MetadataSize;
         public long FileSize;
         public uint Version;
         public long DataOffset;
+
         /// <summary>
         /// 大小端
         /// </summary>
         public byte Endianess;
 
         public string unityVersion;
+
         public AssetFile(byte[] buffer, ref int _position)
         {
         }
@@ -212,12 +258,13 @@ namespace Editor
 
     public class AssetBundleInternalClassUtility
     {
-        public static void DecodeCompressBlocksInfo(byte[] CompressBlockInfoBuffer, AssetBundleHeader header, 
+        public static void DecodeCompressBlocksInfo(byte[] CompressBlockInfoBuffer, AssetBundleHeader header,
             out AssetBundleDirectoryInfo[] allAssetBundleDirectoryInfo, out BlockInfo[] allBlockInfo)
         {
             int unCompressLength = (int)header.UncompressedBlocksInfoSize;
             // 解压 已经压缩的
-            var unCompressBuffer = AssetBundleUtility.DecodeCompress(header.Flag, CompressBlockInfoBuffer, unCompressLength);
+            var unCompressBuffer =
+                AssetBundleUtility.DecodeCompress(header.Flag, CompressBlockInfoBuffer, unCompressLength);
             int unCompressPosition = 0;
             // hash
             var DataHash = AssetBundleUtility.ReadBytes(unCompressBuffer, 16, ref unCompressPosition);
@@ -232,7 +279,7 @@ namespace Editor
                     Flags = AssetBundleUtility.ReadUInt16(unCompressBuffer, ref unCompressPosition)
                 };
             }
-            
+
             var directoryCount = AssetBundleUtility.ReadInt32(unCompressBuffer, ref unCompressPosition);
             allAssetBundleDirectoryInfo = new AssetBundleDirectoryInfo[directoryCount];
             for (int i = 0; i < directoryCount; i++)
@@ -260,7 +307,7 @@ namespace Editor
                 }
 
                 directoryInfo.buffer = _temp.ToArray();
-                
+
                 // 解释！
                 directoryInfo.ReadFiles();
             }
@@ -269,7 +316,7 @@ namespace Editor
 
     public class TypeRoot
     {
-        public TypeRoot(byte[] buffer, bool EnableTypeTree, ref int _position)
+        public TypeRoot(byte[] buffer, bool EnableTypeTree, bool refType, ref int _position)
         {
             var classID = AssetBundleUtility.ReadInt32(buffer, ref _position);
             var m_IsStrippedType = AssetBundleUtility.ReadBoolean(buffer, ref _position);
@@ -278,11 +325,21 @@ namespace Editor
             {
                 var m_ScriptID = AssetBundleUtility.ReadBytes(buffer, 16, ref _position);
             }
+
             var m_OldTypeHash = AssetBundleUtility.ReadBytes(buffer, 16, ref _position);
             if (EnableTypeTree)
             {
                 var typeTree = new TypeTree(buffer, ref _position);
-                var m_TypeDependencies = AssetBundleUtility.ReadInt32Array(buffer, ref _position);
+                if (refType)
+                {
+                    var klassName = AssetBundleUtility.ReadStringToNull(buffer, ref _position);
+                    var nameSpace = AssetBundleUtility.ReadStringToNull(buffer, ref _position);
+                    var asmName = AssetBundleUtility.ReadStringToNull(buffer, ref _position);
+                }
+                else
+                {
+                    var m_TypeDependencies = AssetBundleUtility.ReadInt32Array(buffer, ref _position);
+                }
             }
         }
     }
@@ -311,12 +368,12 @@ namespace Editor
                 // > 2019
                 typeTreeNode.m_RefTypeHash = AssetBundleUtility.ReadUInt64(buffer, ref _position);
             }
+
             byte[] stringbuffer = AssetBundleUtility.ReadBytes(buffer, stringBufferSize, ref _position);
             // stringbuffer struct
             {
                 for (int i = 0; i < numberOfNodes; i++)
                 {
-
                     m_Nodes[i].m_Type = ReadString(stringbuffer, m_Nodes[i].m_TypeStrOffset);
                     m_Nodes[i].m_Name = ReadString(stringbuffer, m_Nodes[i].m_NameStrOffset);
                 }
@@ -327,17 +384,18 @@ namespace Editor
                 var isOffset = (value & 0x80000000) == 0;
                 if (isOffset)
                 {
-                    uint Position = value;
+                    int Position = (int)value;
                     return AssetBundleUtility.ReadStringToNull(stringBufferReader, ref Position);
                 }
+
                 var offset = value & 0x7FFFFFFF;
                 if (StringBuffer.TryGetValue(offset, out var str))
                 {
                     return str;
                 }
+
                 return offset.ToString();
             }
-
         }
 
         public class TypeNode
@@ -353,118 +411,118 @@ namespace Editor
             public string m_Type;
             public string m_Name;
         }
-        
+
         public static readonly Dictionary<uint, string> StringBuffer = new Dictionary<uint, string>
         {
-            {0, "AABB"},
-            {5, "AnimationClip"},
-            {19, "AnimationCurve"},
-            {34, "AnimationState"},
-            {49, "Array"},
-            {55, "Base"},
-            {60, "BitField"},
-            {69, "bitset"},
-            {76, "bool"},
-            {81, "char"},
-            {86, "ColorRGBA"},
-            {96, "Component"},
-            {106, "data"},
-            {111, "deque"},
-            {117, "double"},
-            {124, "dynamic_array"},
-            {138, "FastPropertyName"},
-            {155, "first"},
-            {161, "float"},
-            {167, "Font"},
-            {172, "GameObject"},
-            {183, "Generic Mono"},
-            {196, "GradientNEW"},
-            {208, "GUID"},
-            {213, "GUIStyle"},
-            {222, "int"},
-            {226, "list"},
-            {231, "long long"},
-            {241, "map"},
-            {245, "Matrix4x4f"},
-            {256, "MdFour"},
-            {263, "MonoBehaviour"},
-            {277, "MonoScript"},
-            {288, "m_ByteSize"},
-            {299, "m_Curve"},
-            {307, "m_EditorClassIdentifier"},
-            {331, "m_EditorHideFlags"},
-            {349, "m_Enabled"},
-            {359, "m_ExtensionPtr"},
-            {374, "m_GameObject"},
-            {387, "m_Index"},
-            {395, "m_IsArray"},
-            {405, "m_IsStatic"},
-            {416, "m_MetaFlag"},
-            {427, "m_Name"},
-            {434, "m_ObjectHideFlags"},
-            {452, "m_PrefabInternal"},
-            {469, "m_PrefabParentObject"},
-            {490, "m_Script"},
-            {499, "m_StaticEditorFlags"},
-            {519, "m_Type"},
-            {526, "m_Version"},
-            {536, "Object"},
-            {543, "pair"},
-            {548, "PPtr<Component>"},
-            {564, "PPtr<GameObject>"},
-            {581, "PPtr<Material>"},
-            {596, "PPtr<MonoBehaviour>"},
-            {616, "PPtr<MonoScript>"},
-            {633, "PPtr<Object>"},
-            {646, "PPtr<Prefab>"},
-            {659, "PPtr<Sprite>"},
-            {672, "PPtr<TextAsset>"},
-            {688, "PPtr<Texture>"},
-            {702, "PPtr<Texture2D>"},
-            {718, "PPtr<Transform>"},
-            {734, "Prefab"},
-            {741, "Quaternionf"},
-            {753, "Rectf"},
-            {759, "RectInt"},
-            {767, "RectOffset"},
-            {778, "second"},
-            {785, "set"},
-            {789, "short"},
-            {795, "size"},
-            {800, "SInt16"},
-            {807, "SInt32"},
-            {814, "SInt64"},
-            {821, "SInt8"},
-            {827, "staticvector"},
-            {840, "string"},
-            {847, "TextAsset"},
-            {857, "TextMesh"},
-            {866, "Texture"},
-            {874, "Texture2D"},
-            {884, "Transform"},
-            {894, "TypelessData"},
-            {907, "UInt16"},
-            {914, "UInt32"},
-            {921, "UInt64"},
-            {928, "UInt8"},
-            {934, "unsigned int"},
-            {947, "unsigned long long"},
-            {966, "unsigned short"},
-            {981, "vector"},
-            {988, "Vector2f"},
-            {997, "Vector3f"},
-            {1006, "Vector4f"},
-            {1015, "m_ScriptingClassIdentifier"},
-            {1042, "Gradient"},
-            {1051, "Type*"},
-            {1057, "int2_storage"},
-            {1070, "int3_storage"},
-            {1083, "BoundsInt"},
-            {1093, "m_CorrespondingSourceObject"},
-            {1121, "m_PrefabInstance"},
-            {1138, "m_PrefabAsset"},
-            {1152, "FileSize"},
-            {1161, "Hash128"}
+            { 0, "AABB" },
+            { 5, "AnimationClip" },
+            { 19, "AnimationCurve" },
+            { 34, "AnimationState" },
+            { 49, "Array" },
+            { 55, "Base" },
+            { 60, "BitField" },
+            { 69, "bitset" },
+            { 76, "bool" },
+            { 81, "char" },
+            { 86, "ColorRGBA" },
+            { 96, "Component" },
+            { 106, "data" },
+            { 111, "deque" },
+            { 117, "double" },
+            { 124, "dynamic_array" },
+            { 138, "FastPropertyName" },
+            { 155, "first" },
+            { 161, "float" },
+            { 167, "Font" },
+            { 172, "GameObject" },
+            { 183, "Generic Mono" },
+            { 196, "GradientNEW" },
+            { 208, "GUID" },
+            { 213, "GUIStyle" },
+            { 222, "int" },
+            { 226, "list" },
+            { 231, "long long" },
+            { 241, "map" },
+            { 245, "Matrix4x4f" },
+            { 256, "MdFour" },
+            { 263, "MonoBehaviour" },
+            { 277, "MonoScript" },
+            { 288, "m_ByteSize" },
+            { 299, "m_Curve" },
+            { 307, "m_EditorClassIdentifier" },
+            { 331, "m_EditorHideFlags" },
+            { 349, "m_Enabled" },
+            { 359, "m_ExtensionPtr" },
+            { 374, "m_GameObject" },
+            { 387, "m_Index" },
+            { 395, "m_IsArray" },
+            { 405, "m_IsStatic" },
+            { 416, "m_MetaFlag" },
+            { 427, "m_Name" },
+            { 434, "m_ObjectHideFlags" },
+            { 452, "m_PrefabInternal" },
+            { 469, "m_PrefabParentObject" },
+            { 490, "m_Script" },
+            { 499, "m_StaticEditorFlags" },
+            { 519, "m_Type" },
+            { 526, "m_Version" },
+            { 536, "Object" },
+            { 543, "pair" },
+            { 548, "PPtr<Component>" },
+            { 564, "PPtr<GameObject>" },
+            { 581, "PPtr<Material>" },
+            { 596, "PPtr<MonoBehaviour>" },
+            { 616, "PPtr<MonoScript>" },
+            { 633, "PPtr<Object>" },
+            { 646, "PPtr<Prefab>" },
+            { 659, "PPtr<Sprite>" },
+            { 672, "PPtr<TextAsset>" },
+            { 688, "PPtr<Texture>" },
+            { 702, "PPtr<Texture2D>" },
+            { 718, "PPtr<Transform>" },
+            { 734, "Prefab" },
+            { 741, "Quaternionf" },
+            { 753, "Rectf" },
+            { 759, "RectInt" },
+            { 767, "RectOffset" },
+            { 778, "second" },
+            { 785, "set" },
+            { 789, "short" },
+            { 795, "size" },
+            { 800, "SInt16" },
+            { 807, "SInt32" },
+            { 814, "SInt64" },
+            { 821, "SInt8" },
+            { 827, "staticvector" },
+            { 840, "string" },
+            { 847, "TextAsset" },
+            { 857, "TextMesh" },
+            { 866, "Texture" },
+            { 874, "Texture2D" },
+            { 884, "Transform" },
+            { 894, "TypelessData" },
+            { 907, "UInt16" },
+            { 914, "UInt32" },
+            { 921, "UInt64" },
+            { 928, "UInt8" },
+            { 934, "unsigned int" },
+            { 947, "unsigned long long" },
+            { 966, "unsigned short" },
+            { 981, "vector" },
+            { 988, "Vector2f" },
+            { 997, "Vector3f" },
+            { 1006, "Vector4f" },
+            { 1015, "m_ScriptingClassIdentifier" },
+            { 1042, "Gradient" },
+            { 1051, "Type*" },
+            { 1057, "int2_storage" },
+            { 1070, "int3_storage" },
+            { 1083, "BoundsInt" },
+            { 1093, "m_CorrespondingSourceObject" },
+            { 1121, "m_PrefabInstance" },
+            { 1138, "m_PrefabAsset" },
+            { 1152, "FileSize" },
+            { 1161, "Hash128" }
         };
     }
 }
