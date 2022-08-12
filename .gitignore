@@ -1,0 +1,11 @@
+UnityProject/.idea/*
+UnityProject/Library/*
+UnityProject/Logs/*
+UnityProject/Temp/*
+UnityProject/UserSettings/*
+UnityProject/Packages/packages-lock.json
+UnityProject/*.csproj
+UnityProject/*.sln
+UnityProject/*.sln.*
+UnityProject/obj/*
+UnityProject/ProjectSettings*
